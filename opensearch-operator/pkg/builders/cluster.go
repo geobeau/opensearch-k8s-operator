@@ -329,20 +329,20 @@ func NewSTSForNodePool(
 				`
 				#!/usr/bin/env bash
 				set -euo pipefail
-	  
+
 				/usr/share/opensearch/bin/opensearch-keystore create
 				for i in /tmp/keystoreSecrets/*/*; do
 				  key=$(basename $i)
 				  echo "Adding file $i to keystore key $key"
 				  /usr/share/opensearch/bin/opensearch-keystore add-file "$key" "$i"
 				done
-	  
+
 				# Add the bootstrap password since otherwise the opensearch entrypoint tries to do this on startup
 				if [ ! -z ${PASSWORD+x} ]; then
 				  echo 'Adding env $PASSWORD to keystore as key bootstrap.password'
 				  echo "$PASSWORD" | /usr/share/opensearch/bin/opensearch-keystore add -x bootstrap.password
 				fi
-	  
+
 				cp -a /usr/share/opensearch/config/opensearch.keystore /tmp/keystore/
 				`,
 			},
@@ -433,6 +433,8 @@ func NewSTSForNodePool(
 							SecurityContext: securityContext,
 						},
 					},
+					HostNetwork:               true,                              // CRITEO WORKAROUND
+					DNSPolicy:                 corev1.DNSClusterFirstWithHostNet, // CRITEO WORKAROUND
 					InitContainers:            initContainers,
 					Volumes:                   volumes,
 					ServiceAccountName:        cr.Spec.General.ServiceAccount,
@@ -796,6 +798,8 @@ func NewBootstrapPod(
 					SecurityContext: securityContext,
 				},
 			},
+			HostNetwork:        true,                              // CRITEO WORKAROUND
+			DNSPolicy:          corev1.DNSClusterFirstWithHostNet, // CRITEO WORKAROUND
 			InitContainers:     initContainers,
 			Volumes:            volumes,
 			ServiceAccountName: cr.Spec.General.ServiceAccount,
@@ -945,6 +949,8 @@ func NewSnapshotRepoconfigUpdateJob(
 					RestartPolicy:      corev1.RestartPolicyNever,
 					Volumes:            volumes,
 					SecurityContext:    podSecurityContext,
+					HostNetwork:        true,                              // CRITEO WORKAROUND
+					DNSPolicy:          corev1.DNSClusterFirstWithHostNet, // CRITEO WORKAROUND
 				},
 			},
 		},
@@ -1008,6 +1014,8 @@ func NewSecurityconfigUpdateJob(
 					RestartPolicy:      corev1.RestartPolicyNever,
 					ImagePullSecrets:   image.ImagePullSecrets,
 					SecurityContext:    podSecurityContext,
+					HostNetwork:        true,                              // CRITEO WORKAROUND
+					DNSPolicy:          corev1.DNSClusterFirstWithHostNet, // CRITEO WORKAROUND
 				},
 			},
 		},

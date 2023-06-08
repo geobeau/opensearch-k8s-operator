@@ -141,7 +141,9 @@ func NewDashboardsDeploymentForCR(cr *opsterv1.OpenSearchCluster, volumes []core
 					Annotations: annotations,
 				},
 				Spec: corev1.PodSpec{
-					Volumes: volumes,
+					Volumes:     volumes,
+					HostNetwork: true,                              // CRITEO WORKAROUND
+					DNSPolicy:   corev1.DNSClusterFirstWithHostNet, // CRITEO WORKAROUND
 					Containers: []corev1.Container{
 						{
 							Name:            "dashboards",
