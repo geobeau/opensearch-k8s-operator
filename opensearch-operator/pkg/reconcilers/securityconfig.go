@@ -23,6 +23,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// CRITEO WORKAROUND
+// -----------------
+// For securitadmin.sh, we specify -ts instead of -cacert because our API
+// certificates are signed by a real certificate authority, and are valid using
+// Java's default turststore.  '/certs/ca.crt' is the root for self signed admin
+// cert, and will *not* work as a trust root for the rest API.  See:
+// https://github.com/Opster/opensearch-k8s-operator/issues/569
+// -----------------
+
 const (
 	checksumAnnotation = "securityconfig/checksum"
 
@@ -38,13 +47,13 @@ echo 'Waiting to connect to the cluster'; sleep 120;
 done;`
 
 	ApplyAllYmlCmdTmpl = `count=0;
-until $ADMIN -cacert %s -cert %s -key %s -cd %s -icl -nhnv -h %s -p %v || (( count++ >= 20 ));
+until $ADMIN -ts /usr/share/opensearch/jdk/lib/security/cacerts -cert %s -key %s -cd %s -icl -nhnv -h %s -p %v || (( count++ >= 20 ));
 do
 sleep 20;
 done;`
 
 	ApplySingleYmlCmdTmpl = `count=0;
-until $ADMIN -cacert %s -cert %s -key %s -f %s -t %s -icl -nhnv -h %s -p %v || (( count++ >= 20 ));
+until $ADMIN -ts /usr/share/opensearch/jdk/lib/security/cacerts -cert %s -key %s -f %s -t %s -icl -nhnv -h %s -p %v || (( count++ >= 20 ));
 do
 sleep 20;
 done;`
@@ -173,7 +182,7 @@ func (r *SecurityconfigReconciler) Reconcile() (ctrl.Result, error) {
 		clusterHostName := BuildClusterSvcHostName(r.instance)
 		httpPort, securityconfigPath := helpers.VersionCheck(r.instance)
 		cmdArg = fmt.Sprintf(SecurityAdminBaseCmdTmpl, clusterHostName, httpPort) +
-			fmt.Sprintf(ApplyAllYmlCmdTmpl, caCert, adminCert, adminKey, securityconfigPath, clusterHostName, httpPort)
+			fmt.Sprintf(ApplyAllYmlCmdTmpl, adminCert, adminKey, securityconfigPath, clusterHostName, httpPort)
 	}
 
 	r.logger.Info("Starting securityconfig update job")
@@ -227,7 +236,7 @@ func BuildCmdArg(instance *opsterv1.OpenSearchCluster, secret *corev1.Secret, lo
 		// Even if the field was removed from the yaml file it was applied from
 		// Instead it sets it to an empty value
 		if string(secret.Data[k]) != "" {
-			arg = arg + fmt.Sprintf(ApplySingleYmlCmdTmpl, caCert, adminCert, adminKey, filePath, fileType, clusterHostName, httpPort)
+			arg = arg + fmt.Sprintf(ApplySingleYmlCmdTmpl, adminCert, adminKey, filePath, fileType, clusterHostName, httpPort)
 		}
 	}
 
