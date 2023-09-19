@@ -300,11 +300,13 @@ func (r *ClusterReconciler) reconcileNodeStatefulSet(nodePool opsterv1.NodePool,
 		}
 	}
 
+	// CRITEO - Requires Kubernetes >= v1.21 This change should be reverted once
+	// Kubernetes has been upgraded
 	// Handle PodDisruptionBudget
-	result, err = r.handlePDB(&nodePool)
-	if err != nil {
-		return result, err
-	}
+	//result, err = r.handlePDB(&nodePool)
+	//if err != nil {
+	//	return result, err
+	//}
 
 	// Handle PVC resizing
 
