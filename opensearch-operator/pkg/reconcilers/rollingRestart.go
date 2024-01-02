@@ -2,11 +2,13 @@ package reconcilers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cisco-open/operator-tools/pkg/reconciler"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -78,11 +80,20 @@ func (r *RollingRestartReconciler) Reconcile() (ctrl.Result, error) {
 			}, sts); err != nil {
 				return ctrl.Result{}, err
 			}
-			if sts.Status.ReadyReplicas != pointer.Int32Deref(sts.Spec.Replicas, 1) {
-				return ctrl.Result{
-					Requeue:      true,
-					RequeueAfter: 10 * time.Second,
-				}, nil
+			// CRITEO: sts.Status.ReadyReplicas can be inconsistent. CountRunningPodsForNodePool is more reliable
+			// as it uses listing of pods. It helps avoiding race conditions.
+			if numReadyPods, err := helpers.CountRunningPodsForNodePool(r.ctx, r.Client, r.instance, &nodePool); err == nil {
+				expectedReplicas := int(pointer.Int32Deref(sts.Spec.Replicas, 1))
+				if numReadyPods != expectedReplicas {
+					lg.Info(fmt.Sprintf("NodePool %s doesn't have the correct number of readyPods %d/%d", nodePool.Component, numReadyPods, expectedReplicas))
+					return ctrl.Result{
+						Requeue:      true,
+						RequeueAfter: 30 * time.Second,
+					}, nil
+				}
+				lg.Info(fmt.Sprintf("NodePool %s have the correct number of readyPods %d/%d", nodePool.Component, numReadyPods, expectedReplicas))
+			} else {
+				return ctrl.Result{}, err
 			}
 
 			if sts.Status.UpdateRevision != "" &&
@@ -110,6 +121,8 @@ func (r *RollingRestartReconciler) Reconcile() (ctrl.Result, error) {
 		lg.V(1).Info("No pods pending restart")
 		return ctrl.Result{}, nil
 	}
+
+	lg.Info("Processing roll restart")
 
 	// Skip a rolling restart if the cluster hasn't finished initializing
 	if !r.instance.Status.Initialized {
@@ -190,12 +203,17 @@ func (r *RollingRestartReconciler) restartStatefulSetPod(sts *appsv1.StatefulSet
 		}, nil
 	}
 
-	err = r.Delete(r.ctx, &corev1.Pod{
+	// CRITEO: Instead of using Delete, we use Eviction to help prevent race conditions
+	lg.Info(fmt.Sprintf("Evicting %s", workingPod))
+
+	eviction := &policyv1.Eviction{}
+	err = r.SubResource("eviction").Create(r.ctx, &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      workingPod,
 			Namespace: sts.Namespace,
 		},
-	})
+	}, eviction)
+
 	if err != nil {
 		return ctrl.Result{}, err
 	}
