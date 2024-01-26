@@ -46,6 +46,20 @@ do
 echo 'Waiting to connect to the cluster'; sleep 120;
 done;`
 
+	// CRITEO - Disable auto-expand replica because it doesn't work with rackawareness in the current version (using --disable-replica-autoexpand)
+	//          Add 2 replicas (+ primary, so RF3) (using --update_settings 3)
+	ApplyReplicaConfigurationCmdTmpl = `count=0;
+until $ADMIN -ts /usr/share/opensearch/jdk/lib/security/cacerts -cert %s -key %s -cd %s -icl -nhnv --update_settings 2 -h %s -p %v || (( count++ >= 20 ));
+do
+sleep 20;
+done;`
+
+	ApplyDisableAutoExpandConfigurationCmdTmpl = `count=0;
+until $ADMIN -ts /usr/share/opensearch/jdk/lib/security/cacerts -cert %s -key %s -cd %s -icl -nhnv --disable-replica-autoexpand -h %s -p %v || (( count++ >= 20 ));
+do
+sleep 20;
+done;`
+
 	ApplyAllYmlCmdTmpl = `count=0;
 until $ADMIN -ts /usr/share/opensearch/jdk/lib/security/cacerts -cert %s -key %s -cd %s -icl -nhnv -h %s -p %v || (( count++ >= 20 ));
 do
@@ -182,6 +196,8 @@ func (r *SecurityconfigReconciler) Reconcile() (ctrl.Result, error) {
 		clusterHostName := BuildClusterSvcHostName(r.instance)
 		httpPort, securityconfigPath := helpers.VersionCheck(r.instance)
 		cmdArg = fmt.Sprintf(SecurityAdminBaseCmdTmpl, clusterHostName, httpPort) +
+			fmt.Sprintf(ApplyDisableAutoExpandConfigurationCmdTmpl, adminCert, adminKey, securityconfigPath, clusterHostName, httpPort) +
+			fmt.Sprintf(ApplyReplicaConfigurationCmdTmpl, adminCert, adminKey, securityconfigPath, clusterHostName, httpPort) +
 			fmt.Sprintf(ApplyAllYmlCmdTmpl, adminCert, adminKey, securityconfigPath, clusterHostName, httpPort)
 	}
 
@@ -212,7 +228,9 @@ func BuildCmdArg(instance *opsterv1.OpenSearchCluster, secret *corev1.Secret, lo
 	clusterHostName := BuildClusterSvcHostName(instance)
 	httpPort, securityconfigPath := helpers.VersionCheck(instance)
 
-	arg := fmt.Sprintf(SecurityAdminBaseCmdTmpl, clusterHostName, httpPort)
+	arg := fmt.Sprintf(SecurityAdminBaseCmdTmpl, clusterHostName, httpPort) +
+		fmt.Sprintf(ApplyDisableAutoExpandConfigurationCmdTmpl, adminCert, adminKey, securityconfigPath, clusterHostName, httpPort) +
+		fmt.Sprintf(ApplyReplicaConfigurationCmdTmpl, adminCert, adminKey, securityconfigPath, clusterHostName, httpPort)
 
 	// Get the list of yml files and sort them
 	// This will ensure commands are always generated in the same order
